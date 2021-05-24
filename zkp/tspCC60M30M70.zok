@@ -1,0 +1,185 @@
+import "./lib/map30_4971" as getMap30
+import "./lib/map70_4971" as getMap70
+import "./stdlib/hashes/sha256/1024bitPadded" as sha1024Padded
+import "./stdlib/utils/pack/unpack128" as unpack128
+import "./stdlib/utils/pack/pack128" as pack128
+
+def getIndexOfEndpoint(field[60] route, field mapnumber) -> (field):
+    field lastIdx = 59
+    field idx = 59
+
+    for field i in 0..60 do
+        lastIdx = if route[idx] == mapnumber then (idx - 1) else lastIdx fi
+        idx = idx - 1
+    endfor
+return lastIdx
+
+//depends on size of map
+//returns 0 for values between 0 and max map index
+def checkBounds(field e, field mapnumber) -> (field):
+    field result = 1
+    field size30 = 1
+
+    for field i in 0..31 do
+        size30 = size30 * (e - i)
+    endfor
+
+    field size70 = size30
+
+    for field i in 31..71 do
+        size70 = size70 * (e - i)
+    endfor
+    
+    result = result * if mapnumber == 70 then size70 else result fi 
+    result = result * if mapnumber == 30  then size30 else result fi 
+
+return result
+
+def containsOnetime(field x, field[60] y) -> (field):
+    field count = 0
+
+    for field j in 0..60 do
+        count = count + if x == y[j] then 1 else 0 fi
+    endfor
+
+return count
+
+
+def checkCities(field[60] route, field[60] cities, field mapnumber) -> (field):
+
+    for field i in 0..60 do
+        1 == if cities[i] == mapnumber then 1 else containsOnetime(cities[i], route) fi
+        1 == if route[i] == mapnumber then 1 else containsOnetime(route[i], cities) fi
+    endfor
+
+return 1
+
+def basicInputCheck(field[60] route, field[60] cities, field mapnumber) -> (field):
+
+    field invalidCitySlots = 0
+    field invalidRouteSlots = 0
+    field endpointRoute =  0
+
+    1 == if mapnumber == 30 || mapnumber == 70 then 1 else 0 fi
+
+    endpointRoute = getIndexOfEndpoint(route, mapnumber)
+    1 == if endpointRoute == 0 then 0 else 1 fi
+
+    for field i in 0..60 do
+        0 == checkBounds(route[i], mapnumber)
+        0 == checkBounds(cities[i], mapnumber)
+        invalidCitySlots = invalidCitySlots + if cities[i] == mapnumber then 1 else 0 fi
+        invalidRouteSlots = invalidRouteSlots + if route[i] == mapnumber then 1 else 0 fi
+    endfor
+
+    invalidCitySlots == invalidRouteSlots
+    59 == endpointRoute  + invalidRouteSlots
+
+return 1
+
+def getMap(field mapnumber) -> (field[4971]):
+
+    field[4971] map = [0; 4971]
+    field[4971] map30 = getMap30()
+    field[4971] map70 = getMap70()
+
+    map = if mapnumber == 30 then map30 else map fi
+    map = if mapnumber == 70 then map70 else map fi
+
+return map
+
+def calculateSum(field[60] route, field mapnumber) -> (field):
+    
+    field sum = 0
+    field[4971] map = getMap(mapnumber)
+
+    //end - start
+    field pos = (route[getIndexOfEndpoint(route, mapnumber)] * mapnumber) + route[0]
+    sum = sum + map[pos]
+
+    for field i in 0..59 do
+        pos = (route[i] * mapnumber) + route[i + 1]
+        sum = sum + if route[i + 1] == mapnumber then 0 else map[pos] fi
+    endfor
+
+return sum
+
+//hash-part
+def between0And9(field digit) -> (field):
+return digit * (digit - 1) * (digit - 2) * (digit - 3) * (digit - 4) * (digit - 5) * (digit - 6) * (digit - 7) * (digit - 8) * (digit - 9)
+
+def between10And70(field digit) -> (field):
+    field result = 1
+    
+    for field i in 10..71 do
+        result = result * (digit - i)
+    endfor
+return result
+
+def concat(field[10] numbers) -> (field):
+    field result = 0
+    field unit = 1
+
+    //leading ONE
+    field idx = 10
+    field[11] tmp = [1, ...numbers]
+
+    for field i in 0..11 do
+
+        field oneDigit = if between0And9(tmp[idx]) == 0 then 1 else 0 fi
+        field twoDigits = if between10And70(tmp[idx]) == 0 then 1 else 0 fi
+        1 == oneDigit + twoDigits
+
+        result = result + (tmp[idx] * unit)
+
+        unit = unit * if oneDigit == 1 then 10 else 100 fi
+        idx = idx - 1
+    endfor
+
+return result
+
+def hash(field d1, field d2, field d3, field d4, field d5, field d6) -> (field[2]):
+
+    field[256] block1 = [...unpack128(d1), ...unpack128(d2)]
+    field[256] block2 = [...unpack128(d3), ...unpack128(d4)]
+    field[256] block3 = [...unpack128(d5), ...unpack128(d6)]
+    field[256] block4 = [0; 256]
+
+    block = sha1024Padded(block1, block2, block3, block4)
+    res0 = pack128(block[..128])
+    res1 = pack128(block[128..])
+
+return [res0, res1]
+
+
+def main(private field[60] route, private field mapnumber, private field[60] cities, field sum, field[2] hashOfCities, field[2] hashOfRoute) -> (field):
+
+    1 == basicInputCheck(route, cities, mapnumber)
+    1 == checkCities(route, cities, mapnumber)
+    
+    sum == calculateSum(route, mapnumber) //map dependent
+
+    //check if hashOfRoute == h(route)
+    field c1 = concat(route[0..10])
+    field c2 = concat(route[10..20])
+    field c3 = concat(route[20..30])
+    field c4 = concat(route[30..40])
+    field c5 = concat(route[40..50])
+    field c6 = concat(route[50..60])
+
+    field[2] hashresult = hash(c1, c2, c3, c4, c5, c6)
+    hashOfRoute[0] == hashresult[0]
+    hashOfRoute[1] == hashresult[1]
+
+    c1 = concat(cities[0..10])
+    c2 = concat(cities[10..20])
+    c3 = concat(cities[20..30])
+    c4 = concat(cities[30..40])
+    c5 = concat(cities[40..50])
+    c6 = concat(cities[50..60])
+
+    hashresult = hash(c1, c2, c3, c4, c5, c6)
+    hashOfCities[0] == hashresult[0]
+    hashOfCities[1] == hashresult[1]
+
+return 1
